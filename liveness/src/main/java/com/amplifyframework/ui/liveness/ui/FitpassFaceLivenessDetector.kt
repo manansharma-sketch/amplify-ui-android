@@ -327,9 +327,11 @@ private fun FitpassChallengeView(
                         videoViewportSize = viewport,
                         backgroundColor = style.pageBackground
                     )
-                    // Oval edge: red while scanning, fades to green once the check has finished.
+                    // Oval edge: red while scanning, green from the moment the face matches
+                    // (AWS is verifying) and through the success sequence.
+                    val verifying = livenessState.faceMatched || successPhase != SuccessPhase.NONE
                     val ringColor by animateColorAsState(
-                        targetValue = if (successPhase != SuccessPhase.NONE) {
+                        targetValue = if (verifying) {
                             style.ovalSuccessColor
                         } else {
                             style.ovalScanColor
