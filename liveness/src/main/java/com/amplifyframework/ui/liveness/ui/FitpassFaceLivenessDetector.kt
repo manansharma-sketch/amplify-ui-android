@@ -43,12 +43,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -290,11 +293,13 @@ private fun FitpassChallengeView(
                     )
                     val shownRect = RectF(animated.left, animated.top, animated.right, animated.bottom)
 
-                    FaceGuide(
+                    // Our copy of AWS's FaceGuide mask, without its fixed grey outline,
+                    // so the green edge is the only outline.
+                    FitpassOvalMask(
                         modifier = Modifier
                             .fillMaxSize()
                             .align(Alignment.Center),
-                        faceGuideRect = shownRect,
+                        ovalRect = shownRect,
                         videoViewportSize = viewport,
                         backgroundColor = style.pageBackground
                     )
@@ -435,6 +440,48 @@ private const val OVAL_ANIMATION_MS = 450
 /** Width of the green oval edge, and how fast its colour follows the fit. */
 private val RING_WIDTH = 5.dp
 private const val RING_FADE_MS = 250
+
+/**
+ * Same as AWS's FaceGuide (FaceGuide.kt), minus the grey 4dp oval stroke:
+ * fills the area with the background colour and cuts the oval out, so the
+ * camera shows only inside the oval. Drawing only; AWS's check is unaffected.
+ */
+@Composable
+private fun FitpassOvalMask(
+    modifier: Modifier,
+    ovalRect: RectF,
+    videoViewportSize: VideoViewportSize,
+    backgroundColor: Color
+) {
+    val scaled = videoViewportSize.getScaledBoundingRect(ovalRect)
+
+    Canvas(modifier.graphicsLayer(alpha = 0.99f)) {
+        drawRect(color = backgroundColor, size = size)
+
+        // Centre of the viewport inside the full-size canvas, as in AWS's FaceGuide
+        val viewportTopLeft = Offset(
+            x = (size.width - videoViewportSize.viewportPixelSize.width) / 2,
+            y = (size.height - videoViewportSize.viewportPixelSize.height) / 2
+        )
+        val ovalTopLeft = Offset(
+            x = viewportTopLeft.x + scaled.left,
+            y = viewportTopLeft.y + scaled.top
+        )
+        val ovalSize = Size(
+            width = scaled.right - scaled.left,
+            height = scaled.bottom - scaled.top
+        )
+
+        // Cut the oval out of the background
+        drawOval(
+            color = Color.Transparent,
+            style = Fill,
+            topLeft = ovalTopLeft,
+            size = ovalSize,
+            blendMode = BlendMode.SrcOut
+        )
+    }
+}
 
 /** Oval edge drawn exactly on the oval; its colour fades in as the face fits. */
 @Composable
