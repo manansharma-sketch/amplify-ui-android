@@ -10,6 +10,9 @@
 package com.amplifyframework.ui.liveness.ui
 
 import android.graphics.RectF
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateRectAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -39,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -237,37 +241,55 @@ private fun FitpassChallengeView(
                             .align(Alignment.Center)
                     )
 
-                    val guideRect = livenessState.faceGuideRect
-                    if (guideRect != null) {
-                        // AWS oval, exactly as sent by the server
-                        FaceGuide(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .align(Alignment.Center),
-                            faceGuideRect = guideRect,
-                            videoViewportSize = viewport,
-                            backgroundColor = style.pageBackground
+                    // Step 1 (initial face): AWS has not sent the oval yet, so we draw
+                    // AWS's own placeholder oval. Step 2: the real oval from the server.
+                    // The drawn oval animates between them; the check itself always uses
+                    // the server's oval, so this animation is visual only.
+                    val serverRect = livenessState.faceGuideRect
+                    val targetRect = serverRect ?: PLACEHOLDER_OVAL
+                    val animated by animateRectAsState(
+                        targetValue = Rect(
+                            targetRect.left,
+                            targetRect.top,
+                            targetRect.right,
+                            targetRect.bottom
+                        ),
+                        animationSpec = tween(
+                            durationMillis = OVAL_ANIMATION_MS,
+                            easing = FastOutSlowInEasing
+                        ),
+                        label = "fitpassOval"
+                    )
+                    val shownRect = RectF(animated.left, animated.top, animated.right, animated.bottom)
+
+                    FaceGuide(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .align(Alignment.Center),
+                        faceGuideRect = shownRect,
+                        videoViewportSize = viewport,
+                        backgroundColor = style.pageBackground
+                    )
+                    // Fitpass red corner brackets around the oval (drawing only)
+                    Box(
+                        modifier = Modifier
+                            .size(viewport.viewportDpSize)
+                            .align(Alignment.Center)
+                    ) {
+                        OvalCornerBrackets(
+                            ovalRect = viewport.getScaledBoundingRect(shownRect),
+                            color = style.accent,
+                            modifier = Modifier.fillMaxSize()
                         )
-                        // Fitpass red corner brackets around the oval (drawing only)
-                        Box(
-                            modifier = Modifier
-                                .size(viewport.viewportDpSize)
-                                .align(Alignment.Center)
-                        ) {
-                            OvalCornerBrackets(
-                                ovalRect = viewport.getScaledBoundingRect(guideRect),
-                                color = style.accent,
-                                modifier = Modifier.fillMaxSize()
+                        if (style.showRecordingIndicator && serverRect != null) {
+                            RecordingIndicator(
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(8.dp)
                             )
-                            if (style.showRecordingIndicator) {
-                                RecordingIndicator(
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(8.dp)
-                                )
-                            }
                         }
-                    } else {
+                    }
+                    if (livenessState.loadingCameraPreview) {
                         CircularProgressIndicator(
                             color = style.accent,
                             strokeWidth = 2.dp,
@@ -320,19 +342,6 @@ private fun FitpassChallengeView(
             footer()
         }
 
-        // Cover the screen until AWS sends the oval, so the user never sees
-        // the raw square camera or a jumping oval. The camera keeps starting underneath.
-        if (livenessState.faceGuideRect == null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(style.pageBackground),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = style.accent, strokeWidth = 3.dp)
-            }
-        }
-
         // Light challenge stays full-screen so enough light reaches the face
         if (livenessState.faceMatched) {
             if (livenessState.livenessSessionInfo?.challengeType ==
@@ -374,6 +383,11 @@ private fun FitpassChallengeView(
 }
 
 private val STATUS_AREA_HEIGHT = 120.dp
+
+/** AWS's own placeholder oval for the 480x640 preview (same values as AWS's start view). */
+private val PLACEHOLDER_OVAL = RectF(120f, 126f, 360f, 514f)
+
+private const val OVAL_ANIMATION_MS = 450
 
 /** Four rounded corner brackets drawn around the oval's bounding box. */
 @Composable
