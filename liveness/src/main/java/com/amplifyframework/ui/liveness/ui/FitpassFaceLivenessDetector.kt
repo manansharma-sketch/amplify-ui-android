@@ -10,6 +10,7 @@
 package com.amplifyframework.ui.liveness.ui
 
 import android.graphics.RectF
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateRectAsState
@@ -85,7 +86,9 @@ data class FitpassScanStyle(
     val subtitleColor: Color = Color(0xFF6B6F76),
     val showRecordingIndicator: Boolean = false,
     val showCancelButton: Boolean = false,
-    /** Oval edge colour: invisible at the start, fully this colour when the face fits. */
+    /** Oval edge colour while scanning. */
+    val ovalScanColor: Color = Color(0xFFD6453D),
+    /** Oval edge colour once AWS has finished the check. */
     val ovalSuccessColor: Color = Color(0xFF1FAA59)
 )
 
@@ -324,11 +327,15 @@ private fun FitpassChallengeView(
                         videoViewportSize = viewport,
                         backgroundColor = style.pageBackground
                     )
-                    // Oval edge: invisible during the scan, green once the check has finished.
-                    val ringAlpha by animateFloatAsState(
-                        targetValue = if (successPhase != SuccessPhase.NONE) 1f else 0f,
+                    // Oval edge: red while scanning, fades to green once the check has finished.
+                    val ringColor by animateColorAsState(
+                        targetValue = if (successPhase != SuccessPhase.NONE) {
+                            style.ovalSuccessColor
+                        } else {
+                            style.ovalScanColor
+                        },
                         animationSpec = tween(durationMillis = RING_FADE_MS),
-                        label = "fitpassRingAlpha"
+                        label = "fitpassRingColor"
                     )
                     Box(
                         modifier = Modifier
@@ -343,8 +350,8 @@ private fun FitpassChallengeView(
                         }
                         OvalProgressRing(
                             ovalRect = viewport.getScaledBoundingRect(shownRect),
-                            color = style.ovalSuccessColor,
-                            alpha = ringAlpha,
+                            color = ringColor,
+                            alpha = 1f,
                             scale = ringScale,
                             modifier = Modifier.fillMaxSize()
                         )
