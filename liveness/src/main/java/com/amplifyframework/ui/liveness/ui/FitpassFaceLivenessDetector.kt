@@ -68,6 +68,7 @@ import com.amplifyframework.auth.AWSCredentialsProvider
 import com.amplifyframework.core.Action
 import com.amplifyframework.core.Consumer
 import com.amplifyframework.predictions.models.FaceLivenessChallengeType
+import com.amplifyframework.ui.liveness.R
 import com.amplifyframework.ui.liveness.camera.LivenessCoordinator
 import com.amplifyframework.ui.liveness.camera.OnChallengeComplete
 import com.amplifyframework.ui.liveness.ml.FaceDetector
@@ -327,9 +328,11 @@ private fun FitpassChallengeView(
                         videoViewportSize = viewport,
                         backgroundColor = style.pageBackground
                     )
-                    // Oval edge: red while scanning, green from the moment the face matches
-                    // (AWS is verifying) and through the success sequence.
-                    val verifying = livenessState.faceMatched || successPhase != SuccessPhase.NONE
+                    // Oval edge: red while scanning, green exactly when AWS shows "Verifying"
+                    // (capture done, not the result) and through the success sequence.
+                    val verifying = livenessState.livenessCheckState.instructionId ==
+                        R.string.amplify_ui_liveness_challenge_verifying ||
+                        successPhase != SuccessPhase.NONE
                     val ringColor by animateColorAsState(
                         targetValue = if (verifying) {
                             style.ovalSuccessColor
