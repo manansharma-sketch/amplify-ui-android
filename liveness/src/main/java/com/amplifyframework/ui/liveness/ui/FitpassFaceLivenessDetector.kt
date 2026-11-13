@@ -279,7 +279,15 @@ private fun FitpassChallengeView(
 
             Spacer(Modifier.height(16.dp))
 
-            // Status: AWS instruction text (e.g. "Move closer") + Fitpass subtitle
+            // Status: AWS instruction text (e.g. "Move closer") + Fitpass subtitle.
+            // Fixed height: if this area grew or shrank, the camera box above would
+            // resize and the oval would visibly change size.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(STATUS_AREA_HEIGHT),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             val checkState = livenessState.livenessCheckState
             val challengeType = livenessState.livenessSessionInfo?.challengeType
             if (fitpassShouldShowInstruction(checkState, challengeType)) {
@@ -306,9 +314,23 @@ private fun FitpassChallengeView(
                 fontSize = 16.sp,
                 textAlign = TextAlign.Center
             )
-            Spacer(Modifier.height(24.dp))
+            }
+            Spacer(Modifier.height(16.dp))
 
             footer()
+        }
+
+        // Cover the screen until AWS sends the oval, so the user never sees
+        // the raw square camera or a jumping oval. The camera keeps starting underneath.
+        if (livenessState.faceGuideRect == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(style.pageBackground),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = style.accent, strokeWidth = 3.dp)
+            }
         }
 
         // Light challenge stays full-screen so enough light reaches the face
@@ -350,6 +372,8 @@ private fun FitpassChallengeView(
         }
     }
 }
+
+private val STATUS_AREA_HEIGHT = 120.dp
 
 /** Four rounded corner brackets drawn around the oval's bounding box. */
 @Composable
