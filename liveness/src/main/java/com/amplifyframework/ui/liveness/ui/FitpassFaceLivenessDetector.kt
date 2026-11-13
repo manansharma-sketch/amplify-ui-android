@@ -11,6 +11,7 @@ package com.amplifyframework.ui.liveness.ui
 
 import android.graphics.RectF
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateRectAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -42,7 +43,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -77,7 +80,9 @@ data class FitpassScanStyle(
     val subtitle: String = "Hold your head within the frame to complete the scan",
     val subtitleColor: Color = Color(0xFF6B6F76),
     val showRecordingIndicator: Boolean = false,
-    val showCancelButton: Boolean = true
+    val showCancelButton: Boolean = false,
+    /** Oval edge colour: invisible at the start, fully this colour when the face fits. */
+    val ovalSuccessColor: Color = Color(0xFF1FAA59)
 )
 
 /**
@@ -293,22 +298,34 @@ private fun FitpassChallengeView(
                         videoViewportSize = viewport,
                         backgroundColor = style.pageBackground
                     )
-                    // Fitpass red corner brackets around the oval (drawing only)
+                    // Oval edge that turns green as the face fits (drawing only).
+                    // 0 = transparent (start / placeholder), 1 = full green (face fits).
+                    val fitProgress = when {
+                        finished -> 1f
+                        serverRect == null -> 0f
+                        else -> livenessState.faceMatchPercentage.coerceIn(0f, 1f)
+                    }
+                    val ringAlpha by animateFloatAsState(
+                        targetValue = fitProgress,
+                        animationSpec = tween(durationMillis = RING_FADE_MS),
+                        label = "fitpassRingAlpha"
+                    )
                     Box(
                         modifier = Modifier
                             .size(viewport.viewportDpSize)
                             .align(Alignment.Center)
                     ) {
-                        // While shrinking, the brackets shrink with the oval and reach zero together.
-                        val bracketScale = if (finished) {
+                        // While shrinking, the edge thins out with the oval and reaches zero together.
+                        val ringScale = if (finished) {
                             (shownRect.width() / finalRect!!.width()).coerceIn(0f, 1f)
                         } else {
                             1f
                         }
-                        OvalCornerBrackets(
+                        OvalProgressRing(
                             ovalRect = viewport.getScaledBoundingRect(shownRect),
-                            color = style.accent,
-                            scale = bracketScale,
+                            color = style.ovalSuccessColor,
+                            alpha = ringAlpha,
+                            scale = ringScale,
                             modifier = Modifier.fillMaxSize()
                         )
                         if (style.showRecordingIndicator && serverRect != null) {
@@ -415,41 +432,29 @@ private val PLACEHOLDER_OVAL = RectF(120f, 126f, 360f, 514f)
 
 private const val OVAL_ANIMATION_MS = 450
 
-/** Four rounded corner brackets drawn around the oval's bounding box. */
+/** Width of the green oval edge, and how fast its colour follows the fit. */
+private val RING_WIDTH = 5.dp
+private const val RING_FADE_MS = 250
+
+/** Oval edge drawn exactly on the oval; its colour fades in as the face fits. */
 @Composable
-private fun OvalCornerBrackets(
+private fun OvalProgressRing(
     ovalRect: RectF,
     color: Color,
+    alpha: Float,
     modifier: Modifier = Modifier,
     scale: Float = 1f
 ) {
-    val density = LocalDensity.current
-    val gap = with(density) { 14.dp.toPx() } * scale
-    val arm = with(density) { 44.dp.toPx() } * scale
-    val radius = with(density) { 18.dp.toPx() } * scale
-    val strokeWidth = with(density) { 5.dp.toPx() } * scale
+    val strokeWidth = with(LocalDensity.current) { RING_WIDTH.toPx() } * scale
 
     Canvas(modifier) {
-        if (scale <= 0.01f) return@Canvas
-        val l = ovalRect.left - gap
-        val t = ovalRect.top - gap
-        val r = ovalRect.right + gap
-        val b = ovalRect.bottom + gap
-        val path = Path().apply {
-            // top-left
-            moveTo(l, t + arm); lineTo(l, t + radius)
-            cubicTo(l, t, l, t, l + radius, t); lineTo(l + arm, t)
-            // top-right
-            moveTo(r - arm, t); lineTo(r - radius, t)
-            cubicTo(r, t, r, t, r, t + radius); lineTo(r, t + arm)
-            // bottom-right
-            moveTo(r, b - arm); lineTo(r, b - radius)
-            cubicTo(r, b, r, b, r - radius, b); lineTo(r - arm, b)
-            // bottom-left
-            moveTo(l + arm, b); lineTo(l + radius, b)
-            cubicTo(l, b, l, b, l, b - radius); lineTo(l, b - arm)
-        }
-        drawPath(path, color, style = Stroke(width = strokeWidth, cap = StrokeCap.Round))
+        if (alpha <= 0.01f || scale <= 0.01f || ovalRect.width() <= 0f) return@Canvas
+        drawOval(
+            color = color.copy(alpha = alpha),
+            topLeft = Offset(ovalRect.left, ovalRect.top),
+            size = Size(ovalRect.width(), ovalRect.height()),
+            style = Stroke(width = strokeWidth)
+        )
     }
 }
 
