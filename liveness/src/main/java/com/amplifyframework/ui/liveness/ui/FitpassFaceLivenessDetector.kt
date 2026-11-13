@@ -246,7 +246,29 @@ private fun FitpassChallengeView(
                     // The drawn oval animates between them; the check itself always uses
                     // the server's oval, so this animation is visual only.
                     val serverRect = livenessState.faceGuideRect
-                    val targetRect = serverRect ?: PLACEHOLDER_OVAL
+
+                    // Remember the last oval AWS sent, so we know where to shrink to.
+                    val lastServerRect = remember { mutableStateOf<RectF?>(null) }
+                    LaunchedEffect(serverRect) {
+                        if (serverRect != null) lastServerRect.value = serverRect
+                    }
+                    val finalRect = lastServerRect.value
+
+                    // Step 3 (done): the face matched, or AWS cleared the oval after we had one.
+                    // Shrink the oval to a point at its own centre instead of jumping back.
+                    val finished = finalRect != null &&
+                        (livenessState.faceMatched || serverRect == null)
+
+                    val targetRect = when {
+                        finished -> RectF(
+                            finalRect!!.centerX(),
+                            finalRect.centerY(),
+                            finalRect.centerX(),
+                            finalRect.centerY()
+                        )
+                        serverRect != null -> serverRect
+                        else -> PLACEHOLDER_OVAL
+                    }
                     val animated by animateRectAsState(
                         targetValue = Rect(
                             targetRect.left,
@@ -276,9 +298,16 @@ private fun FitpassChallengeView(
                             .size(viewport.viewportDpSize)
                             .align(Alignment.Center)
                     ) {
+                        // While shrinking, the brackets shrink with the oval and reach zero together.
+                        val bracketScale = if (finished) {
+                            (shownRect.width() / finalRect!!.width()).coerceIn(0f, 1f)
+                        } else {
+                            1f
+                        }
                         OvalCornerBrackets(
                             ovalRect = viewport.getScaledBoundingRect(shownRect),
                             color = style.accent,
+                            scale = bracketScale,
                             modifier = Modifier.fillMaxSize()
                         )
                         if (style.showRecordingIndicator && serverRect != null) {
@@ -391,14 +420,20 @@ private const val OVAL_ANIMATION_MS = 450
 
 /** Four rounded corner brackets drawn around the oval's bounding box. */
 @Composable
-private fun OvalCornerBrackets(ovalRect: RectF, color: Color, modifier: Modifier = Modifier) {
+private fun OvalCornerBrackets(
+    ovalRect: RectF,
+    color: Color,
+    modifier: Modifier = Modifier,
+    scale: Float = 1f
+) {
     val density = LocalDensity.current
-    val gap = with(density) { 14.dp.toPx() }
-    val arm = with(density) { 44.dp.toPx() }
-    val radius = with(density) { 18.dp.toPx() }
-    val strokeWidth = with(density) { 5.dp.toPx() }
+    val gap = with(density) { 14.dp.toPx() } * scale
+    val arm = with(density) { 44.dp.toPx() } * scale
+    val radius = with(density) { 18.dp.toPx() } * scale
+    val strokeWidth = with(density) { 5.dp.toPx() } * scale
 
     Canvas(modifier) {
+        if (scale <= 0.01f) return@Canvas
         val l = ovalRect.left - gap
         val t = ovalRect.top - gap
         val r = ovalRect.right + gap
