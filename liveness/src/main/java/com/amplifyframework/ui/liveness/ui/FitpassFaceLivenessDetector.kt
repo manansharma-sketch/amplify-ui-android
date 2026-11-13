@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -354,20 +353,6 @@ private fun FitpassChallengeView(
                 null
             }
 
-            if (livenessState.faceGuideRect != null &&
-                checkState.instructionId == FaceDetector.FaceOvalPosition.TOO_FAR.instructionStringRes
-            ) {
-                LinearProgressIndicator(
-                    progress = { livenessState.faceMatchPercentage },
-                    modifier = Modifier
-                        .clip(MaterialTheme.shapes.small)
-                        .width(180.dp)
-                        .height(8.dp),
-                    color = style.accent,
-                    trackColor = style.accent.copy(alpha = 0.15f)
-                )
-                Spacer(Modifier.height(12.dp))
-            }
             Text(
                 text = awsMessage ?: style.subtitle,
                 color = style.subtitleColor,
