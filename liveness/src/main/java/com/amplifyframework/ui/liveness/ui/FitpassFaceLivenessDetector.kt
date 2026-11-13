@@ -74,6 +74,7 @@ import com.amplifyframework.ui.liveness.model.FaceLivenessDetectionException
 import com.amplifyframework.ui.liveness.model.LivenessCheckState
 import com.amplifyframework.ui.liveness.ui.helper.VideoViewportSize
 import com.amplifyframework.ui.liveness.util.hasCameraPermission
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Visual settings for the Fitpass scan screen. */
@@ -189,6 +190,11 @@ private fun FitpassChallengeView(
     val currentOnChallengeComplete by rememberUpdatedState(onChallengeComplete)
     val currentOnChallengeFailed by rememberUpdatedState(onChallengeFailed)
 
+    // Success sequence, started only after AWS's code has finished the check
+    // (video sent, session closed): edge turns green, then the oval shrinks,
+    // then we report completion to the app.
+    var successPhase by remember(key) { mutableStateOf(SuccessPhase.NONE) }
+
     DisposableEffect(key) {
         try {
             coordinator = LivenessCoordinator(
@@ -200,7 +206,7 @@ private fun FitpassChallengeView(
                 true, // disableStartView: Fitpass shows its own intro screen
                 challengeOptions,
                 videoOptions = videoOptions,
-                onChallengeComplete = { currentOnChallengeComplete() },
+                onChallengeComplete = { successPhase = SuccessPhase.GREEN },
                 onChallengeFailed = { currentOnChallengeFailed.accept(it) }
             )
         } catch (e: Exception) {
@@ -212,6 +218,20 @@ private fun FitpassChallengeView(
             )
         }
         onDispose { coordinator?.destroy(context) }
+    }
+
+    LaunchedEffect(successPhase) {
+        when (successPhase) {
+            SuccessPhase.GREEN -> {
+                delay((RING_FADE_MS + GREEN_HOLD_MS).toLong())
+                successPhase = SuccessPhase.SHRINK
+            }
+            SuccessPhase.SHRINK -> {
+                delay(OVAL_ANIMATION_MS.toLong())
+                currentOnChallengeComplete()
+            }
+            SuccessPhase.NONE -> Unit
+        }
     }
 
     val livenessCoordinator = coordinator ?: return
@@ -263,19 +283,20 @@ private fun FitpassChallengeView(
                     }
                     val finalRect = lastServerRect.value
 
-                    // Step 3 (done): the face matched, or AWS cleared the oval after we had one.
-                    // Shrink the oval to a point at its own centre instead of jumping back.
-                    val finished = finalRect != null &&
-                        (livenessState.faceMatched || serverRect == null)
+                    // Last step: shrink to a point at the oval's centre, only after
+                    // the check finished and the edge has turned green.
+                    val shrinking = successPhase == SuccessPhase.SHRINK && finalRect != null
 
                     val targetRect = when {
-                        finished -> RectF(
+                        shrinking -> RectF(
                             finalRect!!.centerX(),
                             finalRect.centerY(),
                             finalRect.centerX(),
                             finalRect.centerY()
                         )
                         serverRect != null -> serverRect
+                        // AWS cleared the oval while finishing: hold it where it was.
+                        finalRect != null -> finalRect
                         else -> PLACEHOLDER_OVAL
                     }
                     val animated by animateRectAsState(
@@ -303,15 +324,9 @@ private fun FitpassChallengeView(
                         videoViewportSize = viewport,
                         backgroundColor = style.pageBackground
                     )
-                    // Oval edge that turns green as the face fits (drawing only).
-                    // 0 = transparent (start / placeholder), 1 = full green (face fits).
-                    val fitProgress = when {
-                        finished -> 1f
-                        serverRect == null -> 0f
-                        else -> livenessState.faceMatchPercentage.coerceIn(0f, 1f)
-                    }
+                    // Oval edge: invisible during the scan, green once the check has finished.
                     val ringAlpha by animateFloatAsState(
-                        targetValue = fitProgress,
+                        targetValue = if (successPhase != SuccessPhase.NONE) 1f else 0f,
                         animationSpec = tween(durationMillis = RING_FADE_MS),
                         label = "fitpassRingAlpha"
                     )
@@ -321,7 +336,7 @@ private fun FitpassChallengeView(
                             .align(Alignment.Center)
                     ) {
                         // While shrinking, the edge thins out with the oval and reaches zero together.
-                        val ringScale = if (finished) {
+                        val ringScale = if (shrinking) {
                             (shownRect.width() / finalRect!!.width()).coerceIn(0f, 1f)
                         } else {
                             1f
@@ -440,6 +455,12 @@ private const val OVAL_ANIMATION_MS = 450
 /** Width of the green oval edge, and how fast its colour follows the fit. */
 private val RING_WIDTH = 5.dp
 private const val RING_FADE_MS = 250
+
+/** How long the edge stays fully green before the oval starts shrinking. */
+private const val GREEN_HOLD_MS = 400
+
+/** Steps of the success sequence after AWS finishes the check. */
+private enum class SuccessPhase { NONE, GREEN, SHRINK }
 
 /**
  * Same as AWS's FaceGuide (FaceGuide.kt), minus the grey 4dp oval stroke:
