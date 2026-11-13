@@ -15,6 +15,7 @@ import androidx.compose.animation.core.animateRectAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -51,6 +52,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -330,24 +332,31 @@ private fun FitpassChallengeView(
 
             Spacer(Modifier.height(16.dp))
 
-            // Status: AWS instruction text (e.g. "Move closer") + Fitpass subtitle.
+            // Status: one grey line just above the tips. It shows AWS's message
+            // ("Move closer", "Hold still"...) and falls back to the Fitpass subtitle.
             // Fixed height: if this area grew or shrank, the camera box above would
             // resize and the oval would visibly change size.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(STATUS_AREA_HEIGHT),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Bottom
             ) {
             val checkState = livenessState.livenessCheckState
             val challengeType = livenessState.livenessSessionInfo?.challengeType
-            if (fitpassShouldShowInstruction(checkState, challengeType)) {
-                InstructionMessage(checkState)
+
+            // AWS's own string resource, so the wording is exactly AWS's.
+            val awsMessageId: Int? = checkState.instructionId
+            val awsMessage = if (fitpassShouldShowInstruction(checkState, challengeType)) {
+                awsMessageId?.takeIf { it != 0 }?.let { stringResource(it) }
+            } else {
+                null
             }
+
             if (livenessState.faceGuideRect != null &&
                 checkState.instructionId == FaceDetector.FaceOvalPosition.TOO_FAR.instructionStringRes
             ) {
-                Spacer(Modifier.height(8.dp))
                 LinearProgressIndicator(
                     progress = { livenessState.faceMatchPercentage },
                     modifier = Modifier
@@ -357,12 +366,12 @@ private fun FitpassChallengeView(
                     color = style.accent,
                     trackColor = style.accent.copy(alpha = 0.15f)
                 )
+                Spacer(Modifier.height(12.dp))
             }
-            Spacer(Modifier.height(8.dp))
             Text(
-                text = style.subtitle,
+                text = awsMessage ?: style.subtitle,
                 color = style.subtitleColor,
-                fontSize = 16.sp,
+                fontSize = INSTRUCTION_TEXT_SIZE,
                 textAlign = TextAlign.Center
             )
             }
@@ -412,6 +421,9 @@ private fun FitpassChallengeView(
 }
 
 private val STATUS_AREA_HEIGHT = 120.dp
+
+/** Size of the grey AWS message line above the tips. */
+private val INSTRUCTION_TEXT_SIZE = 16.sp
 
 /** AWS's own placeholder oval for the 480x640 preview (same values as AWS's start view). */
 private val PLACEHOLDER_OVAL = RectF(120f, 126f, 360f, 514f)
